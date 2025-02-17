@@ -1,0 +1,33 @@
+# @package _global_
+defaults:
+  - override /logger: wandb
+
+project: "APPA"
+name: "APPA_OOD"
+img_size: 256
+class_nb: 3
+
+datamodule:
+  transforms:
+    test:
+      resize:
+        height: 256
+        width: 256
+        interpolation: 1
+
+  dataset_config:
+    mean: 0.51718974
+    std: 0.21841954
+    num_classes: 3
+    
+model:
+  _target_: models.Model
+  encoder:
+    name: resnet34
+    in_chans: 1
+    out_indices: [4]
+  decoder:
+    name: identity
+  header:
+    name: cxr_meta
+  num_classes: 3

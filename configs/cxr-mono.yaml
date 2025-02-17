@@ -1,0 +1,76 @@
+# @package _global_
+defaults:
+  - override /logger: wandb
+
+project: "CXR_MONO"
+name: "MONOCHROME_CXR"
+img_size: 256
+class_nb: 1
+
+datamodule:
+  transforms:
+    test:
+      resize:
+        height: 256
+        width: 256
+        interpolation: 1
+
+  dataset_config:
+    mean: 0.51718974
+    std: 0.21841954
+    num_classes: 1
+    
+model:
+  _target_: models.Model
+  encoder:
+    name: mobilenetv3_large_100
+    in_chans: 1
+    out_indices: [4]
+  decoder:
+    name: identity
+  header:
+    name: basic_classifier
+  num_classes: 1
+
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    monitor: /f1-score
+    mode: max
+    save_top_k: 2
+    save_last: True
+    verbose: False
+    dirpath: checkpoints/
+    filename: epoch_{epoch:03d}
+    auto_insert_metric_name: False
+
+# evaluator
+engine:
+  _target_: trainer.src.engine.ClassificationEngine
+  criterion : 
+    name : bce
+
+trainer:
+  #strategy: ddp
+  #sync_batchnorm: true
+  devices: [0]
+  min_epochs: 2
+  max_epochs: 5
+  precision: 16
+  gradient_clip_val : 0.5
+  accumulate_grad_batches: 1
+  log_every_n_steps: 50
+  num_sanity_val_steps: 0
+  # limit_train_batches: 0.01
+
+scheduler:
+  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  T_max: ${trainer.max_epochs}
+  eta_min: 1.e-6
+  last_epoch: -1
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 5.e-4
+  eps: 1.e-8
+  weight_decay: 1.e-2

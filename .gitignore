@@ -1,0 +1,9 @@
+# Tar files
+*.tar
+*.tar.gz
+*.tgz
+
+# Checkpoint files
+*.ckpt
+checkpoint
+*.pth

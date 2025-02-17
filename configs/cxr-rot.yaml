@@ -1,0 +1,137 @@
+# @package _global_
+defaults:
+  - override /logger: wandb
+
+project: "CXR_Rotation"
+name: "Rotation_CXR"
+img_size: 256
+class_nb: 4
+
+datamodule:
+  transforms:
+    test:
+      resize:
+        height: 256
+        width: 256
+        interpolation: 1
+
+  dataset_config:
+    mean: 0.51718974
+    std: 0.21841954
+    num_classes: 4
+    
+model:
+  _target_: models.Model
+  encoder:
+    name: mobilenetv3_large_100
+    in_chans: 1
+    out_indices: [4]
+  decoder:
+    name: identity
+  header:
+    name: basic_classifier
+  num_classes: 4
+
+test: True
+fold : 1
+experiment: "rotation"
+cutmix_ratio: 0.0
+
+datamodule:
+  _target_: trainer.src.datamodules.DataModuleCXRRot
+  data_dir: "/opt/project"
+  batch_size: 32
+  num_workers: 4
+  transforms:
+    train:
+      resize:
+        height: ${img_size}
+        width: ${img_size}
+        interpolation: 1
+      random_spatial_augment_v1:
+        height: ${img_size}
+        width: ${img_size}
+        scale: 0.1
+        translate_x: 10
+        translate_y: 10
+        p: 0.5
+    val:
+      resize:
+        height: ${img_size}
+        width: ${img_size}
+        interpolation: 1 # 1:linear, 2:bicubic
+    test:
+      resize:
+        height: 256
+        width: 256
+        interpolation: 1 # 1:linear, 2:bicubic
+
+  dataset_config:
+    csv_root: "/opt/project/chexpert_all.csv"
+    val_fold: ${fold}
+    normal_ratio: 1.0
+    valid_one_to_one: True
+    exclude_class: []
+    mapping_class: {}
+    target_class: [ 
+                    "0", 
+                    "90",
+                    "180",
+                    "270"
+                    ]
+    # Transform setting
+    img_size: ${img_size}
+    windowing: True
+    normalize: True
+    cutmix_ratio: ${cutmix_ratio}
+
+callbacks:
+  model_checkpoint:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    monitor: val/cls/m_f1-score
+    mode: max
+    save_top_k: 4
+    save_last: True
+    verbose: False
+    dirpath: checkpoints/
+    filename: epoch_{epoch:03d}
+    auto_insert_metric_name: False
+
+# evaluator
+engine:
+  _target_: trainer.src.engine.CXRROT
+  criterion : 
+    name : bce
+  evaluator:
+    class_nb : ${class_nb}
+    target_class : ${datamodule.dataset_config.target_class}
+    prob_threshold: 0.3
+    prob_max_threshold: 0.0
+    thresholding_based_youden: True
+    best_perform_metric: ${callbacks.model_checkpoint.monitor}
+    best_perform_mode: ${callbacks.model_checkpoint.mode}
+
+trainer:
+  #strategy: ddp
+  #sync_batchnorm: true
+  devices: [1]
+  min_epochs: 2
+  max_epochs: 5
+  precision: 16
+  gradient_clip_val : 0.5
+  accumulate_grad_batches: 1
+  log_every_n_steps: 50
+  num_sanity_val_steps: 0
+  # limit_train_batches: 0.01
+
+scheduler:
+  _target_: torch.optim.lr_scheduler.CosineAnnealingLR
+  T_max: ${trainer.max_epochs}
+  eta_min: 1.e-6
+  last_epoch: -1
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: 5.e-4
+  eps: 1.e-8
+  weight_decay: 1.e-2
